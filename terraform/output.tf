@@ -1,5 +1,5 @@
-output "kube_config" {
-  value     = azurerm_kubernetes_cluster.aks.kube_config_raw
+output "kube_config_b64" {
+  value     = base64encode(azurerm_kubernetes_cluster.aks.kube_config_raw)
   sensitive = true
 }
 
