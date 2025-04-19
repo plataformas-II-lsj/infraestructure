@@ -1,26 +1,31 @@
-name: Deploy Infrastructure on Push
+name: Deploy Terraform on Push
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'terraform/**'
+    branches: [ main ]  # Se activa solo con push a 'main'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.5" 
 
       - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Run Terraform
+      - name: Terraform Init & Apply
         run: |
-          cd terraform/
           terraform init
           terraform apply -auto-approve
