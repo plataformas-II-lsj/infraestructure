@@ -17,6 +17,7 @@ spec:
       containers:
       - name: todos-api
         image: todos-api:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8082
         env:
@@ -30,3 +31,10 @@ spec:
             value: "6379"
           - name: REDIS_CHANNEL
             value: log_channel
+          - name: ZIPKIN_URL
+            value: http://zipkin:9411/api/v2/spans
+        resources:
+          requests:
+            cpu: "100m"
+          limits:
+            cpu: "500m"
