@@ -44,9 +44,9 @@ jobs:
         id: apply
         run: |
           terraform apply -auto-approve
-          echo "kube_config_b64=$(terraform output -raw kube_config_b64)" >> $GITHUB_OUTPUT
-          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
-          echo "key_vault_uri=$(terraform output -raw key_vault_uri)" >> $GITHUB_OUTPUT
+          echo "KUBE_CONFIG_B64=$(terraform output -raw kube_config_b64)" >> $GITHUB_ENV
+          echo "ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)" >> $GITHUB_ENV
+          echo "KEY_VAULT_URI=$(terraform output -raw key_vault_uri)" >> $GITHUB_ENV
 
   deploy_k8s:
     runs-on: ubuntu-latest
@@ -65,8 +65,6 @@ jobs:
           version: 'latest'
 
       - name: Configure kubectl using Terraform Output
-        env:
-          KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
         run: |
           echo "Configuring kubectl..."
           mkdir -p ${HOME}/.kube
