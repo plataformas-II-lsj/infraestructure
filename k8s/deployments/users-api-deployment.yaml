@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users-api
+  template:
+    metadata:
+      labels:
+        app: users-api
+    spec:
+      containers:
+        - name: users-api
+          image: users-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          env:
+            - name: JWT_SECRET
+              value: PRFT
+            - name: SERVER_PORT
+              value: "8083"
+            - name: ZIPKIN_URL
+              value: http://zipkin:9411/
+          volumeMounts:
+            - name: users-data
+              mountPath: /app/data
+      volumes:
+        - name: users-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-api
+spec:
+  selector:
+    app: users-api
+  ports:
+    - protocol: TCP
+      port: 8083
+      targetPort: 8083
+
