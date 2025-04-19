@@ -9,11 +9,11 @@ variable "resource_group_name" {
 }
 
 variable "aks_cluster_name" {
-  default = "microservice_aks"
+  default = "microserviceaks"
 }
 
 variable "acr_name" {
-  default = "microservice_acr"
+  default = "microserviceacr"
 }
 
 variable "key_vault_name" {
