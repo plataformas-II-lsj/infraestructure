@@ -8,63 +8,69 @@ jobs:
   deploy_infra:
     runs-on: ubuntu-latest
     env:
-      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
     defaults:
       run:
         working-directory: terraform/
+    # Sólo exportamos los outputs cortos como outputs de job
     outputs:
-      kube_config_b64: ${{ steps.apply.outputs.kube_config_b64 }}
-      acr_login_server: ${{ steps.apply.outputs.acr_login_server }}
-      key_vault_uri: ${{ steps.apply.outputs.key_vault_uri }}
+      acr_login_server: ${{ steps.export_outputs.outputs.acr_login_server }}
+      key_vault_uri:    ${{ steps.export_outputs.outputs.key_vault_uri }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Terraform
-        id: check
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: "1.8.3"
 
-      - name: Check if Azure credentials are set
-        run: |
-          echo "Variables de entorno ARM configuradas desde secretos individuales."
-          echo "ARM_CLIENT_ID is set: $(test -n "$ARM_CLIENT_ID" && echo true || echo false)"
-          echo "ARM_SUBSCRIPTION_ID is set: $(test -n "$ARM_SUBSCRIPTION_ID" && echo true || echo false)"
-          echo "ARM_TENANT_ID is set: $(test -n "$ARM_TENANT_ID" && echo true || echo false)"
-
       - name: Terraform Init
-        id: init
         run: terraform init
 
       - name: Terraform Apply
         id: apply
         run: |
           terraform apply -auto-approve
-          terraform output -raw kube_config_b64 > kubeconfig.b64
-          terraform output -raw acr_login_server > acr_login.txt
-          terraform output -raw key_vault_uri > keyvault.txt
 
-      - name: Export Terraform Outputs to ENV
+          # 1) Creamos los archivos con los outputs
+          terraform output -raw kube_config_b64    > kubeconfig.b64
+          terraform output -raw acr_login_server   > acr_login.txt
+          terraform output -raw key_vault_uri      > keyvault.txt
+
+      - name: Upload kubeconfig artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: kubeconfig-b64
+          path: kubeconfig.b64
+
+      - name: Export Terraform Outputs
+        id: export_outputs
         run: |
-          echo "KUBE_CONFIG_B64=$(cat kubeconfig.b64)" >> $GITHUB_ENV
-          echo "ACR_LOGIN_SERVER=$(cat acr_login.txt)" >> $GITHUB_ENV
-          echo "KEY_VAULT_URI=$(cat keyvault.txt)" >> $GITHUB_ENV
-
+          # Sólo los valores cortos los enviamos como outputs de job
+          echo "acr_login_server=$(cat acr_login.txt)" >> $GITHUB_OUTPUT
+          echo "key_vault_uri=$(cat keyvault.txt)"    >> $GITHUB_OUTPUT
 
   deploy_k8s:
     runs-on: ubuntu-latest
     needs: deploy_infra
+    environment: production
     defaults:
       run:
         working-directory: k8s/
-    environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download kubeconfig artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: kubeconfig-b64
+          path: ./
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v1
@@ -75,22 +81,21 @@ jobs:
         run: |
           echo "Configuring kubectl..."
           mkdir -p ${HOME}/.kube
-          echo "$KUBE_CONFIG_B64" | base64 -d > ${HOME}/.kube/config
+          # Decodificamos el archivo base64 que trajimos como artifact
+          base64 -d kubeconfig.b64 > ${HOME}/.kube/config
           chmod 600 ${HOME}/.kube/config
           echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
-          echo "Kubectl context:"
-          kubectl config get-contexts
-          echo "Current context:"
+
+          echo "Kubectl contexts:"  
+          kubectl config get-contexts  
+          echo "Current context:"  
           kubectl config current-context
 
       - name: kubectl Apply - Deployments
-        run: |
-          kubectl apply -f deployments/
+        run: kubectl apply -f deployments/
 
       - name: kubectl Apply - HPA
-        run: |
-          kubectl apply -f hpa/
+        run: kubectl apply -f hpa/
 
       - name: kubectl Apply - Services
-        run: |
-          kubectl apply -f services/
+        run: kubectl apply -f services/
