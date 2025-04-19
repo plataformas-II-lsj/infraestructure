@@ -7,6 +7,11 @@ on:
 jobs:
   deploy_infra:
     runs-on: ubuntu-latest
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
     defaults:
       run:
         working-directory: terraform/
@@ -19,16 +24,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Terraform
+        id: check
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: "1.8.3"
 
-      - name: Set Azure authentication environment variables
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      - name: Check if Azure credentials are set
         run: |
           echo "Variables de entorno ARM configuradas desde secretos individuales."
           echo "ARM_CLIENT_ID is set: $(test -n "$ARM_CLIENT_ID" && echo true || echo false)"
