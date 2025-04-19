@@ -42,7 +42,7 @@ jobs:
           terraform output -raw key_vault_uri      > keyvault.txt
 
       - name: Upload kubeconfig artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: kubeconfig-b64
           path: kubeconfig.b64
