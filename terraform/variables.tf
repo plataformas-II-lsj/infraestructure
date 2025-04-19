@@ -5,7 +5,7 @@ variable "location" {
 
 variable "resource_group_name" {
   description = "Name of the resource group"
-  default     = "microservice_lab_rg"
+  default     = "microservice_lab_rg1"
 }
 
 variable "aks_cluster_name" {
