@@ -17,7 +17,7 @@ variable "acr_name" {
 }
 
 resource "random_id" "unique_suffix" {
-  byte_length = 8
+  byte_length = 2
 }
 
 variable "key_vault_name" {
