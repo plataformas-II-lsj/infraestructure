@@ -32,15 +32,3 @@ spec:
               cpu: "100m"
             limits:
               cpu: "500m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: auth-api
-spec:
-  selector:
-    app: auth-api
-  ports:
-    - protocol: TCP
-      port: 8000
-      targetPort: 8000
