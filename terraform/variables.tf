@@ -5,7 +5,7 @@ variable "location" {
 
 variable "resource_group_name" {
   description = "Name of the resource group"
-  default     = "microservice_lab_rg2"
+  default     = "microservice_lab_rg"
 }
 
 variable "aks_cluster_name" {
@@ -13,7 +13,7 @@ variable "aks_cluster_name" {
 }
 
 variable "acr_name" {
-  default = "microserviceacr"
+  default = "microserviceacr2"
 }
 
 variable "key_vault_name" {
