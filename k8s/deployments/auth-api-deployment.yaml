@@ -27,15 +27,3 @@ spec:
               value: http://users-api:8083
             - name: ZIPKIN_URL
               value: http://zipkin:9411/api/v2/spans
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: auth-api
-spec:
-  selector:
-    app: auth-api
-  ports:
-    - protocol: TCP
-      port: 8000
-      targetPort: 8000
