@@ -16,10 +16,11 @@ variable "acr_name" {
   default = "microserviceacr2"
 }
 
-variable "key_vault_name" {
-  default = "microservice-keyvault-${random_id.unique_suffix.hex}"
-}
-
 resource "random_id" "unique_suffix" {
   byte_length = 8
+}
+
+variable "key_vault_name" {
+  description = "The name of the Key Vault"
+  default     = "microservice-lsj-keyvault"
 }

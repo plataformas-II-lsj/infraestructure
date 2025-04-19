@@ -33,7 +33,7 @@ resource "azurerm_container_registry" "acr" {
 }
 
 resource "azurerm_key_vault" "key_vault" {
-  name                = var.key_vault_name
+  name                = "${var.key_vault_name}-${random_id.unique_suffix.hex}" 
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
