@@ -16,7 +16,7 @@ jobs:
       run:
         working-directory: terraform/
     outputs:
-      kube_config: ${{ steps.apply.outputs.kube_config }}
+      kube_config_b64: ${{ steps.apply.outputs.kube_config_b64 }}
       acr_login_server: ${{ steps.apply.outputs.acr_login_server }}
       key_vault_uri: ${{ steps.apply.outputs.key_vault_uri }}
     steps:
@@ -44,7 +44,7 @@ jobs:
         id: apply
         run: |
           terraform apply -auto-approve
-          echo "kube_config=$(terraform output -raw kube_config)" >> $GITHUB_OUTPUT
+          echo "kube_config_b64=$(terraform output -raw kube_config_b64)" >> $GITHUB_OUTPUT
           echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
           echo "key_vault_uri=$(terraform output -raw key_vault_uri)" >> $GITHUB_OUTPUT
 
@@ -66,11 +66,11 @@ jobs:
 
       - name: Configure kubectl using Terraform Output
         env:
-          KUBE_CONFIG_DATA: ${{ needs.deploy_infra.outputs.kube_config }}
+          KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
         run: |
           echo "Configuring kubectl..."
           mkdir -p ${HOME}/.kube
-          echo "${KUBE_CONFIG_DATA}" > ${HOME}/.kube/config
+          echo "$KUBE_CONFIG_B64" | base64 -d > ${HOME}/.kube/config
           chmod 600 ${HOME}/.kube/config
           echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
           echo "Kubectl context:"
