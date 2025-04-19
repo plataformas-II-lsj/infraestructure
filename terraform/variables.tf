@@ -22,5 +22,5 @@ resource "random_id" "unique_suffix" {
 
 variable "key_vault_name" {
   description = "The name of the Key Vault"
-  default     = "microservice-lsj-keyvault"
+  default     = "vault-lsj"
 }
