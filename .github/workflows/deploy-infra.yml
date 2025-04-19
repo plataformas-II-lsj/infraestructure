@@ -18,6 +18,7 @@ jobs:
     outputs:
       acr_login_server: ${{ steps.export_outputs.outputs.acr_login_server }}
       key_vault_uri:    ${{ steps.export_outputs.outputs.key_vault_uri }}
+      kube_config_b64:  ${{ steps.export_outputs.outputs.kube_config_b64 }}
 
     steps:
       - name: Checkout repository
@@ -36,23 +37,12 @@ jobs:
         run: |
           terraform apply -auto-approve
 
-          # 1) Creamos los archivos con los outputs
-          terraform output -raw kube_config_b64    > kubeconfig.b64
-          terraform output -raw acr_login_server   > acr_login.txt
-          terraform output -raw key_vault_uri      > keyvault.txt
-
-      - name: Upload kubeconfig artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: kubeconfig-b64
-          path: kubeconfig.b64
-
       - name: Export Terraform Outputs
         id: export_outputs
         run: |
-          # Sólo los valores cortos los enviamos como outputs de job
-          echo "acr_login_server=$(cat acr_login.txt)" >> $GITHUB_OUTPUT
-          echo "key_vault_uri=$(cat keyvault.txt)"    >> $GITHUB_OUTPUT
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
+          echo "key_vault_uri=$(terraform output -raw key_vault_uri)" >> $GITHUB_OUTPUT
+          echo "kube_config_b64=$(terraform output -raw kube_config_b64)" >> $GITHUB_OUTPUT
 
   deploy_k8s:
     runs-on: ubuntu-latest
@@ -65,23 +55,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download kubeconfig artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: kubeconfig-b64
-          path: ./
-
       - name: Set up kubectl
         uses: azure/setup-kubectl@v1
         with:
           version: 'latest'
 
       - name: Configure kubectl using Terraform Output
+        env:
+          KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
         run: |
           echo "Configuring kubectl..."
           mkdir -p ${HOME}/.kube
-          # Decodificamos el archivo base64 que trajimos como artifact
-          base64 -d kubeconfig.b64 > ${HOME}/.kube/config
+          echo "${KUBE_CONFIG_B64}" | base64 -d > ${HOME}/.kube/config
           chmod 600 ${HOME}/.kube/config
           echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
 
