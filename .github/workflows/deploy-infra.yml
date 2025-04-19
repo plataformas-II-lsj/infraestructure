@@ -1,31 +1,80 @@
-name: Deploy Terraform on Push
+name: Deploy Infrastructure and Kubernetes Resources to Main
 
 on:
   push:
-    branches: [ main ]  # Se activa solo con push a 'main'
+    branches: [ main ]
 
 jobs:
-  deploy:
+  deploy_infra:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: terraform/
-
+    outputs:
+      kube_config: ${{ steps.apply.outputs.kube_config }}
+      acr_login_server: ${{ steps.apply.outputs.acr_login_server }}
+      key_vault_uri: ${{ steps.apply.outputs.key_vault_uri }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: "1.5.5" 
+          terraform_version: "1.8.3"
 
       - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Terraform Init & Apply
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Apply
+        id: apply
         run: |
-          terraform init
           terraform apply -auto-approve
+          echo "kube_config=$(terraform output -raw kube_config)" >> $GITHUB_OUTPUT
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
+          echo "key_vault_uri=$(terraform output -raw key_vault_uri)" >> $GITHUB_OUTPUT
+
+  deploy_k8s:
+    runs-on: ubuntu-latest
+    needs: deploy_infra
+    defaults:
+      run:
+        working-directory: k8s/
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v1
+        with:
+          version: '1.24.0'
+
+      - name: Configure kubectl using Terraform Output
+        env:
+          KUBE_CONFIG_DATA: ${{ needs.deploy_infra.outputs.kube_config }}
+        run: |
+          echo "Configuring kubectl..."
+          mkdir -p ${HOME}/.kube
+          echo "${KUBE_CONFIG_DATA}" > ${HOME}/.kube/config
+          chmod 600 ${HOME}/.kube/config
+          echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
+          kubectl config get-contexts
+
+      - name: kubectl Apply - Deployments
+        run: |
+          kubectl apply -f deployments/
+
+      - name: kubectl Apply - HPA
+        run: |
+          kubectl apply -f hpa/
+
+      - name: kubectl Apply - Services
+        run: |
+          kubectl apply -f services/
