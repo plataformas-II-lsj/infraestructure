@@ -28,6 +28,11 @@ spec:
           volumeMounts:
             - name: users-data
               mountPath: /app/data
+          resources:
+            requests:
+              cpu: "100m"
+            limits:
+              cpu: "500m"
       volumes:
         - name: users-data
           emptyDir: {}
