@@ -44,9 +44,16 @@ jobs:
         id: apply
         run: |
           terraform apply -auto-approve
-          echo "KUBE_CONFIG_B64=$(terraform output -raw kube_config_b64)" >> $GITHUB_ENV
-          echo "ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)" >> $GITHUB_ENV
-          echo "KEY_VAULT_URI=$(terraform output -raw key_vault_uri)" >> $GITHUB_ENV
+          terraform output -raw kube_config_b64 > kubeconfig.b64
+          terraform output -raw acr_login_server > acr_login.txt
+          terraform output -raw key_vault_uri > keyvault.txt
+
+      - name: Export Terraform Outputs to ENV
+        run: |
+          echo "KUBE_CONFIG_B64=$(cat kubeconfig.b64)" >> $GITHUB_ENV
+          echo "ACR_LOGIN_SERVER=$(cat acr_login.txt)" >> $GITHUB_ENV
+          echo "KEY_VAULT_URI=$(cat keyvault.txt)" >> $GITHUB_ENV
+
 
   deploy_k8s:
     runs-on: ubuntu-latest
