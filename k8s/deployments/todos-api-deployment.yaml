@@ -24,7 +24,10 @@ spec:
           - name: TODO_API_PORT
             value: "8082"
           - name: JWT_SECRET
-            value: PRFT
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET
           - name: REDIS_HOST
             value: redis
           - name: REDIS_PORT
@@ -33,8 +36,19 @@ spec:
             value: log_channel
           - name: ZIPKIN_URL
             value: http://zipkin:9411/api/v2/spans
+        volumeMounts:
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
         resources:
           requests:
             cpu: "100m"
           limits:
             cpu: "500m"
+      volumes:
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.azure.com
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: azure-kv-secrets

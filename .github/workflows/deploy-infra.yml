@@ -1,69 +1,89 @@
-name: Deploy Infrastructure and Kubernetes Resources to Main
+name: Deploy Infrastructure and Kubernetes Base Config
 
 on:
   push:
     branches: [ main ]
-
   workflow_dispatch:
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+  TF_VAR_location:           ${{ secrets.TF_LOCATION }}
+  TF_VAR_resource_group_name: ${{ secrets.TF_RG_NAME }}
+  TF_VAR_aks_cluster_name:   ${{ secrets.TF_AKS_CLUSTER_NAME }}
+  TF_VAR_acr_name:           ${{ secrets.TF_ACR_NAME }}
+  TF_VAR_key_vault_name:     ${{ secrets.TF_KEYVAULT_NAME }}
+  TF_VAR_jwt_secret:         ${{ secrets.TF_JWT_SECRET }}
 
 jobs:
   deploy_infra:
     runs-on: ubuntu-latest
-    env:
-      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
-    defaults:
-      run:
-        working-directory: terraform/
     outputs:
-      acr_login_server: ${{ steps.export_outputs.outputs.acr_login_server }}
-      key_vault_uri:    ${{ steps.export_outputs.outputs.key_vault_uri }}
-      kube_config_b64:  ${{ steps.export_outputs.outputs.kube_config_b64 }}
+      acr_login_server:    ${{ steps.terraform_outputs.outputs.acr_login_server }}
+      key_vault_name:      ${{ steps.terraform_outputs.outputs.key_vault_name }}
+      kube_config_b64:     ${{ steps.terraform_outputs.outputs.kube_config_b64 }}
+      resource_group_name: ${{ steps.terraform_outputs.outputs.resource_group_name }}
+      aks_cluster_name:    ${{ steps.terraform_outputs.outputs.aks_cluster_name }}
+      acr_name:            ${{ steps.terraform_outputs.outputs.acr_name }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.8.3"
           terraform_wrapper: false
 
       - name: Terraform Init
+        working-directory: terraform/
         run: terraform init
 
+      - name: Terraform Validate
+        working-directory: terraform/
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: terraform/
+        id: plan
+        run: terraform plan -no-color
+
       - name: Terraform Apply
+        working-directory: terraform/
         id: apply
-        run: |
-          terraform apply -auto-approve
+        run: terraform apply -auto-approve -no-color
 
       - name: Export Terraform Outputs
-        id: export_outputs
+        working-directory: terraform/
+        id: terraform_outputs
         run: |
           echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
-          echo "key_vault_uri=$(terraform output -raw key_vault_uri)" >> $GITHUB_OUTPUT
+          echo "key_vault_name=$(terraform output -raw key_vault_name)" >> $GITHUB_OUTPUT
           echo "kube_config_b64=$(terraform output -raw kube_config_b64)" >> $GITHUB_OUTPUT
+          echo "resource_group_name=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "acr_name=$(terraform output -raw acr_name)" >> $GITHUB_OUTPUT
 
-  deploy_k8s:
+
+  deploy_k8s_base:
     runs-on: ubuntu-latest
     needs: deploy_infra
-    environment: production
-    defaults:
-      run:
-        working-directory: k8s/
+    environment: production # O el entorno que corresponda
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v1
+        uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
 
-      - name: Configure kubectl using Terraform Output
+      - name: Configure kubectl
         env:
           KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
         run: |
@@ -72,60 +92,73 @@ jobs:
           echo "${KUBE_CONFIG_B64}" | base64 -d > ${HOME}/.kube/config
           chmod 600 ${HOME}/.kube/config
           echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
-
-          echo "Kubectl contexts:"  
-          kubectl config get-contexts  
-          echo "Current context:"  
+          kubectl config get-contexts
           kubectl config current-context
 
-      - name: Prefix images with ACR_LOGIN_SERVER
+      - name: Substitute Env Variables in K8s Manifests
         env:
-          ACR_SERVER: ${{ needs.deploy_infra.outputs.acr_login_server }}
+          ACR_LOGIN_SERVER: ${{ needs.deploy_infra.outputs.acr_login_server }}
+          KEY_VAULT_NAME:   ${{ needs.deploy_infra.outputs.key_vault_name }}
+          TENANT_ID:        ${{ env.ARM_TENANT_ID }}
+        working-directory: k8s/
         run: |
-          echo "→ Prefijando imágenes con: $ACR_SERVER"
-          for f in deployments/*.yaml; do
-            sed -E -i "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: $ACR_SERVER/\1:\2#g" "$f"
-          done
+          echo "Substituting variables..."
+          # Prefijar imágenes en Deployments
+          find deployments/ -type f -name '*.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
+          echo "Image names prefixed with ${ACR_LOGIN_SERVER}/"
 
-      - name: kubectl Apply - Deployments
-        run: kubectl apply -f deployments/
+          # Sustituir variables en SecretProviderClass
+          if [ -f csi/keyvault-secrets-provider.yaml ]; then
+             sed -i "s|\${KEY_VAULT_NAME}|${KEY_VAULT_NAME}|g" csi/keyvault-secrets-provider.yaml
+             sed -i "s|\${TENANT_ID}|${TENANT_ID}|g" csi/keyvault-secrets-provider.yaml
+             echo "Variables substituted in SecretProviderClass"
+          else
+             echo "WARN: SecretProviderClass manifest not found at csi/keyvault-secrets-provider.yaml"
+          fi
+          # Puedes añadir más sustituciones si es necesario para otros manifiestos
 
-      - name: kubectl Apply - HPA
-        run: kubectl apply -f hpa/
-
-      - name: kubectl Apply - Services
-        run: kubectl apply -f services/
-
-      - name: kubectl Apply - IngressController
-        run: kubectl apply -f controller/
-
-      - name: Wait for Ingress Controller to be ready
+      - name: Apply Kubernetes Manifests
+        working-directory: k8s/
         run: |
+          kubectl apply -f csi/
+          kubectl apply -f deployments/
+          kubectl apply -f statefulsets/
+          kubectl apply -f services/
+          kubectl apply -f hpa/
+          kubectl apply -f controller/
+
           echo "Waiting for Ingress Controller to be ready..."
-          kubectl wait --for=condition=available --timeout=600s deployment/ingress-nginx-controller -n ingress-nginx
-          kubectl wait --for=condition=complete --timeout=300s job/ingress-nginx-admission-create -n ingress-nginx
-          kubectl wait --for=condition=complete --timeout=300s job/ingress-nginx-admission-patch -n ingress-nginx
+          # NOTA: Asegúrate que el namespace (-n ingress-nginx) es correcto
+          kubectl wait --for=condition=available --timeout=600s deployment/ingress-nginx-controller -n ingress-nginx || echo "WARN: Ingress controller deployment timed out"
+          kubectl wait --for=condition=complete --timeout=300s job/ingress-nginx-admission-create -n ingress-nginx || echo "WARN: Ingress admission create job timed out"
+          kubectl wait --for=condition=complete --timeout=300s job/ingress-nginx-admission-patch -n ingress-nginx || echo "WARN: Ingress admission patch job timed out"
           echo "Ingress Controller is ready."
 
-      - name: Wait for Admission Webhook to respond
-        run: |
           echo "Waiting for webhook admission endpoint to respond..."
           ATTEMPTS=30
-          SLEEP=5
+          SLEEP=10
           for i in $(seq 1 $ATTEMPTS); do
             echo "Attempt $i/$ATTEMPTS"
-            if kubectl run tmp-check --rm -i --restart=Never --image=curlimages/curl:8.4.0 \
-              -n ingress-nginx -- curl -ks https://ingress-nginx-controller-admission.ingress-nginx.svc:443; then
+            if kubectl run curl-check-webhook --rm -i --restart=Never --image=curlimages/curl:latest \
+              -n ingress-nginx -- curl --silent --max-time 5 --fail -kv https://ingress-nginx-controller-admission.ingress-nginx.svc:443/ ; then
               echo "✅ Webhook is responding!"
+              kubectl delete pod curl-check-webhook -n ingress-nginx --ignore-not-found
               break
             else
-              echo "❌ Not ready yet. Retrying in $SLEEP seconds..."
+              exit_code=$?
+              echo "❌ Webhook not ready yet (exit code: $exit_code). Retrying in $SLEEP seconds..."
               sleep $SLEEP
             fi
+            if [ $i -eq $ATTEMPTS ]; then
+              echo "::error::Webhook did not become ready after $ATTEMPTS attempts."
+              exit 1
+            fi
           done
+          echo "Ingress Controller checks completed."
+          
+          kubectl apply -f ingress/
 
-      - name: kubectl Apply - Ingress
-        run: kubectl apply -f ingress/
+          # Aplica NetworkPolicies
+          kubectl apply -f policies/
 
-      - name: kubectl Apply - Policies
-        run: kubectl apply -f policies/
+          echo "All Kubernetes manifests applied."

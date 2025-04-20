@@ -20,15 +20,29 @@ spec:
             - containerPort: 8000
           env:
             - name: JWT_SECRET
-              value: PRFT
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET
             - name: AUTH_API_PORT
               value: "8000"
             - name: USERS_API_ADDRESS
               value: http://users-api:8083
             - name: ZIPKIN_URL
               value: http://zipkin:9411/api/v2/spans
+          volumeMounts:
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
           resources:
             requests:
               cpu: "100m"
             limits:
               cpu: "500m"
+      volumes:
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.azure.com
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: azure-kv-secrets

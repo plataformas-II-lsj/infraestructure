@@ -1,22 +1,25 @@
 variable "location" {
   description = "Azure region"
-  default     = "East US"
 }
 
 variable "resource_group_name" {
   description = "Name of the resource group"
-  default     = "microservice_lab_rg"
 }
 
 variable "aks_cluster_name" {
-  default = "microserviceaks"
+  description = "Name of the AKS cluster"
 }
 
 variable "acr_name" {
-  default = "microserviceacr2"
+  description = "Name of the ACR instance"
 }
 
 variable "key_vault_name" {
   description = "The name of the Key Vault"
-  default     = "plat-vault-lsj"
+}
+
+variable "jwt_secret" {
+  description = "The JWT Secret value"
+  type        = string
+  sensitive   = true
 }

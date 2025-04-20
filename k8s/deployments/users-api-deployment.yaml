@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: users-api
+  namespace: default
+  labels:
+    app: users-api
 spec:
   replicas: 1
   selector:
@@ -14,25 +17,40 @@ spec:
     spec:
       containers:
         - name: users-api
-          image: users-api:latest
+          image: users-api:initial
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8083
+              name: http
           env:
             - name: JWT_SECRET
-              value: PRFT
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JWT_SECRET
             - name: SERVER_PORT
               value: "8083"
             - name: ZIPKIN_URL
-              value: http://zipkin:9411/
+              value: "http://zipkin.default.svc.cluster.local:9411/api/v2/spans"
           volumeMounts:
             - name: users-data
               mountPath: /app/data
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
           resources:
             requests:
               cpu: "100m"
+              memory: "128Mi"
             limits:
               cpu: "500m"
+              memory: "512Mi"
       volumes:
         - name: users-data
           emptyDir: {}
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.azure.com
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: azure-kv-secrets
