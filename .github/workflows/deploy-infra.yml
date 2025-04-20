@@ -85,10 +85,7 @@ jobs:
 
       - name: Debug kubeconfig
         run: |
-          echo "Decoded kubeconfig:"
-          cat ${HOME}/.kube/config
-          echo "---"
-          kubectl config get-contexts || true
+          echo "kube_config_b64=${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
 
       - name: Configure kubectl
         env:
