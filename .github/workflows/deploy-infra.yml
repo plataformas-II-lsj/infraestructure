@@ -24,7 +24,6 @@ jobs:
     outputs:
       acr_login_server:    ${{ steps.terraform_outputs.outputs.acr_login_server }}
       key_vault_name:      ${{ steps.terraform_outputs.outputs.key_vault_name }}
-      kube_config_b64:     ${{ steps.terraform_outputs.outputs.kube_config_b64 }}
       resource_group_name: ${{ steps.terraform_outputs.outputs.resource_group_name }}
       aks_cluster_name:    ${{ steps.terraform_outputs.outputs.aks_cluster_name }}
       acr_name:            ${{ steps.terraform_outputs.outputs.acr_name }}
@@ -63,10 +62,18 @@ jobs:
         run: |
           echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
           echo "key_vault_name=$(terraform output -raw key_vault_name)" >> $GITHUB_OUTPUT
-          echo "kube_config_b64=$(terraform output -raw kube_config_b64)" >> $GITHUB_OUTPUT
           echo "resource_group_name=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
           echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> $GITHUB_OUTPUT
           echo "acr_name=$(terraform output -raw acr_name)" >> $GITHUB_OUTPUT
+
+          terraform output -raw kube_config_b64 > kube_config.b64
+
+      - name: Upload Kubeconfig Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubeconfig
+          path: terraform/kube_config.b64
+          retention-days: 1
 
       - name: Debug Job Outputs (After Step)
         run: |
@@ -90,36 +97,27 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Debug Received Kubeconfig Output
-        run: |
-          echo "Checking the value of 'kube_config_b64' received from deploy_infra job..."
-          KUBECFG_RX="${{ needs.deploy_infra.outputs.kube_config_b64 }}"
-          echo "Received value (truncated): ${KUBECFG_RX}" | head -c 200
-          
-          if [ -z "$KUBECFG_RX" ]; then
-            echo "::error::The 'kube_config_b64' output received from the previous job is empty!"
-            exit 1
-          else
-            echo "✅ kube_config_b64 value received successfully."
-          fi
-
+      - name: Download Kubeconfig Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kubeconfig
+          path: ~/.kube
 
       - name: Configure kubectl
-        env:
-          KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
         run: |
           echo "Configuring kubectl..."
-          
-          if [ -z "$KUBE_CONFIG_B64" ]; then
-            echo "::error::KUBE_CONFIG_B64 environment variable is empty. Cannot configure kubectl."
+
+          KUBECONFIG_FILE="${HOME}/.kube/kube_config.b64" # Path to the downloaded artifact file
+
+          if [ ! -f "$KUBECONFIG_FILE" ]; then
+            echo "::error::Kubeconfig artifact file not found at $KUBECONFIG_FILE."
             exit 1
           fi
 
-          mkdir -p ${HOME}/.kube
-          
-          echo "${KUBE_CONFIG_B64}" | base64 -d > ${HOME}/.kube/config
+          # Decode the base64 file directly
+          base64 -d "$KUBECONFIG_FILE" > ${HOME}/.kube/config
           if [ $? -ne 0 ]; then
-            echo "::error::Failed to base64 decode kube_config_b64. Is the value valid base64?"
+            echo "::error::Failed to base64 decode kubeconfig artifact. Is the file valid base64?"
             exit 1
           fi
 
