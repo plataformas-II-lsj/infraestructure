@@ -16,11 +16,7 @@ variable "acr_name" {
   default = "microserviceacr2"
 }
 
-resource "random_id" "unique_suffix" {
-  byte_length = 2
-}
-
 variable "key_vault_name" {
   description = "The name of the Key Vault"
-  default     = "vault-lsj"
+  default     = "plat-vault-lsj"
 }

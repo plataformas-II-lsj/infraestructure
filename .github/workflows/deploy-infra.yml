@@ -4,6 +4,8 @@ on:
   push:
     branches: [ main ]
 
+  workflow_dispatch:
+
 jobs:
   deploy_infra:
     runs-on: ubuntu-latest
@@ -76,6 +78,15 @@ jobs:
           echo "Current context:"  
           kubectl config current-context
 
+      - name: Prefix images with ACR_LOGIN_SERVER
+        env:
+          ACR_SERVER: ${{ needs.deploy_infra.outputs.acr_login_server }}
+        run: |
+          echo "→ Prefijando imágenes con: $ACR_SERVER"
+          for f in deployments/*.yaml; do
+            sed -E -i "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: $ACR_SERVER/\1:\2#g" "$f"
+          done
+
       - name: kubectl Apply - Deployments
         run: kubectl apply -f deployments/
 
@@ -84,3 +95,37 @@ jobs:
 
       - name: kubectl Apply - Services
         run: kubectl apply -f services/
+
+      - name: kubectl Apply - IngressController
+        run: kubectl apply -f controller/
+
+      - name: Wait for Ingress Controller to be ready
+        run: |
+          echo "Waiting for Ingress Controller to be ready..."
+          kubectl wait --for=condition=available --timeout=600s deployment/ingress-nginx-controller -n ingress-nginx
+          kubectl wait --for=condition=complete --timeout=300s job/ingress-nginx-admission-create -n ingress-nginx
+          kubectl wait --for=condition=complete --timeout=300s job/ingress-nginx-admission-patch -n ingress-nginx
+          echo "Ingress Controller is ready."
+
+      - name: Wait for Admission Webhook to respond
+        run: |
+          echo "Waiting for webhook admission endpoint to respond..."
+          ATTEMPTS=30
+          SLEEP=5
+          for i in $(seq 1 $ATTEMPTS); do
+            echo "Attempt $i/$ATTEMPTS"
+            if kubectl run tmp-check --rm -i --restart=Never --image=curlimages/curl:8.4.0 \
+              -n ingress-nginx -- curl -ks https://ingress-nginx-controller-admission.ingress-nginx.svc:443; then
+              echo "✅ Webhook is responding!"
+              break
+            else
+              echo "❌ Not ready yet. Retrying in $SLEEP seconds..."
+              sleep $SLEEP
+            fi
+          done
+
+      - name: kubectl Apply - Ingress
+        run: kubectl apply -f ingress/
+
+      - name: kubectl Apply - Policies
+        run: kubectl apply -f policies/
