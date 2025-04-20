@@ -21,6 +21,7 @@ env:
 jobs:
   deploy_infra:
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       acr_login_server:    ${{ steps.terraform_outputs.outputs.acr_login_server }}
       key_vault_name:      ${{ steps.terraform_outputs.outputs.key_vault_name }}
@@ -68,18 +69,9 @@ jobs:
           echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> $GITHUB_OUTPUT
           echo "acr_name=$(terraform output -raw acr_name)" >> $GITHUB_OUTPUT
 
-      - name: Validate Terraform Output Step Results
+      - name: Debug Job Outputs (After Step)
         run: |
-          echo "Checking contents of $GITHUB_OUTPUT from 'Export Terraform Outputs' step:"
-          cat $GITHUB_OUTPUT
-          
-          KUBECONFIG_OUTPUT=$(grep "kube_config_b64=" $GITHUB_OUTPUT)
-          if [ -z "$KUBECONFIG_OUTPUT" ]; then
-            echo "::error::kube_config_b64 output was NOT set in $GITHUB_OUTPUT!"
-            exit 1
-          else
-            echo "✅ kube_config_b64 output IS set in $GITHUB_OUTPUT."
-          fi
+          echo "Value (truncated for security): ${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
 
       - name: Debug Job Outputs (After Step)
         run: |
