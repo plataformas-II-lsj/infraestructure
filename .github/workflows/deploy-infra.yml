@@ -111,11 +111,10 @@ jobs:
         working-directory: k8s/
         run: |
           echo "Substituting variables..."
-          # Prefijar imágenes en Deployments
+          
           find deployments/ -type f -name '*.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
           echo "Image names prefixed with ${ACR_LOGIN_SERVER}/"
 
-          # Sustituir variables en SecretProviderClass
           if [ -f csi/keyvault-secrets-provider.yaml ]; then
              sed -i "s|\${KEY_VAULT_NAME}|${KEY_VAULT_NAME}|g" csi/keyvault-secrets-provider.yaml
              sed -i "s|\${TENANT_ID}|${TENANT_ID}|g" csi/keyvault-secrets-provider.yaml
@@ -123,7 +122,6 @@ jobs:
           else
              echo "WARN: SecretProviderClass manifest not found at csi/keyvault-secrets-provider.yaml"
           fi
-          # Puedes añadir más sustituciones si es necesario para otros manifiestos
 
       - name: Apply Kubernetes Manifests
         working-directory: k8s/
