@@ -13,9 +13,14 @@ variable "aks_cluster_name" {
 }
 
 variable "acr_name" {
-  default = "microserviceacr3"
+  default = "microserviceacr2"
+}
+
+resource "random_id" "unique_suffix" {
+  byte_length = 2
 }
 
 variable "key_vault_name" {
-  default = "microservice-keyvaultL"
+  description = "The name of the Key Vault"
+  default     = "vault-lsj"
 }
