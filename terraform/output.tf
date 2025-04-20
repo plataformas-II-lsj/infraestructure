@@ -1,6 +1,5 @@
 output "kube_config_b64" {
   value     = base64encode(azurerm_kubernetes_cluster.aks.kube_config_raw)
-  sensitive = true
 }
 
 output "acr_login_server" {
