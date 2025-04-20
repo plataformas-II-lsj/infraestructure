@@ -83,6 +83,13 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Debug kubeconfig
+        run: |
+          echo "Decoded kubeconfig:"
+          cat ${HOME}/.kube/config
+          echo "---"
+          kubectl config get-contexts || true
+
       - name: Configure kubectl
         env:
           KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
@@ -92,7 +99,7 @@ jobs:
           echo "${KUBE_CONFIG_B64}" | base64 -d > ${HOME}/.kube/config
           chmod 600 ${HOME}/.kube/config
           echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
-          
+
           CONTEXT_NAME=$(kubectl config get-contexts -o name | head -n 1)
           kubectl config use-context "$CONTEXT_NAME"
 
