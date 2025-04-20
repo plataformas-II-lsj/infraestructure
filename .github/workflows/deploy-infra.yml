@@ -21,7 +21,6 @@ env:
 jobs:
   deploy_infra:
     runs-on: ubuntu-latest
-    environment: production
     outputs:
       acr_login_server:    ${{ steps.terraform_outputs.outputs.acr_login_server }}
       key_vault_name:      ${{ steps.terraform_outputs.outputs.key_vault_name }}
@@ -71,10 +70,6 @@ jobs:
 
       - name: Debug Job Outputs (After Step)
         run: |
-          echo "Value (truncated for security): ${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
-
-      - name: Debug Job Outputs (After Step)
-        run: |
           echo "Checking if the job output variable 'kube_config_b64' is being populated..."
           echo "Value (truncated for security): ${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
           if [ -z "${{ steps.terraform_outputs.outputs.kube_config_b64 }}" ]; then
@@ -85,7 +80,6 @@ jobs:
   deploy_k8s:
     runs-on: ubuntu-latest
     needs: deploy_infra
-    environment: production
 
     steps:
       - name: Checkout repository
