@@ -68,11 +68,32 @@ jobs:
           echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> $GITHUB_OUTPUT
           echo "acr_name=$(terraform output -raw acr_name)" >> $GITHUB_OUTPUT
 
+      - name: Validate Terraform Output Step Results
+        run: |
+          echo "Checking contents of $GITHUB_OUTPUT from 'Export Terraform Outputs' step:"
+          cat $GITHUB_OUTPUT
+          
+          KUBECONFIG_OUTPUT=$(grep "kube_config_b64=" $GITHUB_OUTPUT)
+          if [ -z "$KUBECONFIG_OUTPUT" ]; then
+            echo "::error::kube_config_b64 output was NOT set in $GITHUB_OUTPUT!"
+            exit 1
+          else
+            echo "✅ kube_config_b64 output IS set in $GITHUB_OUTPUT."
+          fi
 
-  deploy_k8s_base:
+      - name: Debug Job Outputs (After Step)
+        run: |
+          echo "Checking if the job output variable 'kube_config_b64' is being populated..."
+          echo "Value (truncated for security): ${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
+          if [ -z "${{ steps.terraform_outputs.outputs.kube_config_b64 }}" ]; then
+            echo "::warning::Job output 'kube_config_b64' appears empty or not propagated from step."
+          fi
+
+
+  deploy_k8s:
     runs-on: ubuntu-latest
     needs: deploy_infra
-    environment: production # O el entorno que corresponda
+    environment: production
 
     steps:
       - name: Checkout repository
@@ -83,25 +104,51 @@ jobs:
         with:
           version: 'latest'
 
-      - name: Debug kubeconfig
+      - name: Debug Received Kubeconfig Output
         run: |
-          echo "kube_config_b64=${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
+          echo "Checking the value of 'kube_config_b64' received from deploy_infra job..."
+          KUBECFG_RX="${{ needs.deploy_infra.outputs.kube_config_b64 }}"
+          echo "Received value (truncated): ${KUBECFG_RX}" | head -c 200
+          
+          if [ -z "$KUBECFG_RX" ]; then
+            echo "::error::The 'kube_config_b64' output received from the previous job is empty!"
+            exit 1
+          else
+            echo "✅ kube_config_b64 value received successfully."
+          fi
+
 
       - name: Configure kubectl
         env:
           KUBE_CONFIG_B64: ${{ needs.deploy_infra.outputs.kube_config_b64 }}
         run: |
           echo "Configuring kubectl..."
+          
+          if [ -z "$KUBE_CONFIG_B64" ]; then
+            echo "::error::KUBE_CONFIG_B64 environment variable is empty. Cannot configure kubectl."
+            exit 1
+          fi
+
           mkdir -p ${HOME}/.kube
+          
           echo "${KUBE_CONFIG_B64}" | base64 -d > ${HOME}/.kube/config
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to base64 decode kube_config_b64. Is the value valid base64?"
+            exit 1
+          fi
+
           chmod 600 ${HOME}/.kube/config
           echo "KUBECONFIG=${HOME}/.kube/config" >> $GITHUB_ENV
 
-          CONTEXT_NAME=$(kubectl config get-contexts -o name | head -n 1)
-          kubectl config use-context "$CONTEXT_NAME"
-
+          echo "Validating kubectl config..."
           kubectl config get-contexts
+          if [ $? -ne 0 ]; then
+            echo "::error::kubectl config get-contexts failed. Kubeconfig might be invalid."
+            exit 1
+          fi
           kubectl config current-context
+          echo "kubectl configured successfully."
+
 
       - name: Substitute Env Variables in K8s Manifests
         env:
@@ -111,7 +158,7 @@ jobs:
         working-directory: k8s/
         run: |
           echo "Substituting variables..."
-          
+
           find deployments/ -type f -name '*.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
           echo "Image names prefixed with ${ACR_LOGIN_SERVER}/"
 
