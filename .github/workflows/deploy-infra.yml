@@ -173,29 +173,30 @@ jobs:
 
           echo "Waiting for webhook admission endpoint to respond..."
           ATTEMPTS=30
-          SLEEP=10
+          SLEEP=5
+          set +e
           for i in $(seq 1 $ATTEMPTS); do
             echo "Attempt $i/$ATTEMPTS"
-            if kubectl run curl-check-webhook --rm -i --restart=Never --image=curlimages/curl:latest \
-              -n ingress-nginx -- curl --silent --max-time 5 --fail -kv https://ingress-nginx-controller-admission.ingress-nginx.svc:443/ ; then
-              echo "✅ Webhook is responding!"
-              kubectl delete pod curl-check-webhook -n ingress-nginx --ignore-not-found
+            kubectl run curl-check-webhook --rm -i --restart=Never --image=curlimages/curl:latest \
+              -n ingress-nginx -- curl --silent --max-time 5 -kv https://ingress-nginx-controller-admission.ingress-nginx.svc:443/
+            exit_code=$?
+            if [ "$exit_code" -eq 0 ] || [ "$exit_code" -eq 22 ]; then
+              echo "✅ Webhook is responding (curl exit code: $exit_code)!"
               break
             else
-              exit_code=$?
-              echo "❌ Webhook not ready yet (exit code: $exit_code). Retrying in $SLEEP seconds..."
+              echo "❌ Webhook not ready yet (curl exit code: $exit_code). Retrying in $SLEEP seconds..."
               sleep $SLEEP
             fi
             if [ $i -eq $ATTEMPTS ]; then
               echo "::error::Webhook did not become ready after $ATTEMPTS attempts."
-              exit 1
+              exit 1 # Fallamos el job si se agotan los intentos
             fi
           done
+          set -e
           echo "Ingress Controller checks completed."
           
           kubectl apply -f ingress/
 
-          # Aplica NetworkPolicies
           kubectl apply -f policies/
 
           echo "All Kubernetes manifests applied."
