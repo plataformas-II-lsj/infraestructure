@@ -4,4 +4,4 @@
 
 ## Set up kubernetes deployments
 
-## Set up kubernetes services
+## Set up kubernetes service
