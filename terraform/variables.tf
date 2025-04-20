@@ -13,9 +13,9 @@ variable "aks_cluster_name" {
 }
 
 variable "acr_name" {
-  default = "microserviceacr2"
+  default = "microserviceacr3"
 }
 
 variable "key_vault_name" {
-  default = "microservice-keyvault"
+  default = "microservice-keyvaultL"
 }
