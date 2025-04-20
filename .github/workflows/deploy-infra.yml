@@ -143,7 +143,7 @@ jobs:
         run: |
           echo "Substituting variables..."
 
-          find deployments/ -type f -name '*.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
+          find deployments/ -type f -name '*.yaml' ! -path 'deployments/zipkin-deployment.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
           echo "Image names prefixed with ${ACR_LOGIN_SERVER}/"
 
           if [ -f csi/keyvault-secrets-provider.yaml ]; then
