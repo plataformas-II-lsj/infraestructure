@@ -60,6 +60,7 @@ jobs:
           echo "RESOURCE_GROUP_NAME=$(terraform output -raw resource_group_name)" >> tf_outputs.env
           echo "AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name)" >> tf_outputs.env
           echo "ACR_NAME=$(terraform output -raw acr_name)" >> tf_outputs.env
+          echo "JWT_SECRET_VALUE=$(terraform output -raw jwt_secret_value)" >> tf_outputs.env
           echo "tf_outputs.env file created."
 
       - name: Upload Kubeconfig Artifact
@@ -153,18 +154,23 @@ jobs:
           find deployments/ -type f -name '*.yaml' ! -path 'deployments/zipkin-deployment.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
           echo "Image names prefixed with ${ACR_LOGIN_SERVER}/"
 
-          if [ -f csi/keyvault-secrets-provider.yaml ]; then
-              sed -i "s|\${KEY_VAULT_NAME}|${KEY_VAULT_NAME}|g" csi/keyvault-secrets-provider.yaml
-              sed -i "s|\${TENANT_ID}|${TENANT_ID}|g" csi/keyvault-secrets-provider.yaml
-              echo "Variables substituted in SecretProviderClass"
-          else
-              echo "WARN: SecretProviderClass manifest not found at csi/keyvault-secrets-provider.yaml"
+      - name: Create Kubernetes Secret from TF Output
+        run: |
+          if [ -z "$JWT_SECRET_VALUE" ]; then
+            echo "::error::JWT_SECRET_VALUE is empty. Cannot create secret."
+            exit 1
           fi
+
+          echo "Creating or updating Kubernetes secret 'app-secrets'..."
+          kubectl create secret generic app-secrets \
+            --from-literal=JWT_SECRET="$JWT_SECRET_VALUE" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Kubernetes secret 'app-secrets' created/updated successfully."
 
       - name: Apply Kubernetes Manifests
         working-directory: k8s/
         run: |
-          kubectl apply -f csi/
           kubectl apply -f deployments/
           kubectl apply -f statefulsets/
           kubectl apply -f services/

@@ -21,11 +21,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
     type = "SystemAssigned"
   }
 
-  key_vault_secrets_provider {
-    secret_rotation_enabled = true
-    # secret_rotation_interval = "5m"
-  }
-
   network_profile {
     network_plugin     = "azure"
     network_policy     = "azure"
@@ -61,15 +56,6 @@ resource "azurerm_key_vault" "key_vault" {
 
     key_permissions = []
     secret_permissions = ["Get", "List", "Set", "Delete", "Purge"]
-    certificate_permissions = []
-  }
-
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = azurerm_kubernetes_cluster.aks.key_vault_secrets_provider[0].secret_identity[0].object_id
-
-    key_permissions = []
-    secret_permissions = ["Get", "List"]
     certificate_permissions = []
   }
 }
