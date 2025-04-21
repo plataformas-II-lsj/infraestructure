@@ -21,13 +21,6 @@ env:
 jobs:
   deploy_infra:
     runs-on: ubuntu-latest
-    outputs:
-      acr_login_server:    ${{ steps.terraform_outputs.outputs.acr_login_server }}
-      key_vault_name:      ${{ steps.terraform_outputs.outputs.key_vault_name }}
-      resource_group_name: ${{ steps.terraform_outputs.outputs.resource_group_name }}
-      aks_cluster_name:    ${{ steps.terraform_outputs.outputs.aks_cluster_name }}
-      acr_name:            ${{ steps.terraform_outputs.outputs.acr_name }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -60,13 +53,14 @@ jobs:
         working-directory: terraform/
         id: terraform_outputs
         run: |
-          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> $GITHUB_OUTPUT
-          echo "key_vault_name=$(terraform output -raw key_vault_name)" >> $GITHUB_OUTPUT
-          echo "resource_group_name=$(terraform output -raw resource_group_name)" >> $GITHUB_OUTPUT
-          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> $GITHUB_OUTPUT
-          echo "acr_name=$(terraform output -raw acr_name)" >> $GITHUB_OUTPUT
 
           terraform output -raw kube_config_b64 > kube_config.b64
+          echo "ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)" > tf_outputs.env
+          echo "KEY_VAULT_NAME=$(terraform output -raw key_vault_name)" >> tf_outputs.env
+          echo "RESOURCE_GROUP_NAME=$(terraform output -raw resource_group_name)" >> tf_outputs.env
+          echo "AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name)" >> tf_outputs.env
+          echo "ACR_NAME=$(terraform output -raw acr_name)" >> tf_outputs.env
+          echo "tf_outputs.env file created."
 
       - name: Upload Kubeconfig Artifact
         uses: actions/upload-artifact@v4
@@ -74,16 +68,16 @@ jobs:
           name: kubeconfig
           path: terraform/kube_config.b64
           retention-days: 1
+          overwrite: true
 
-      - name: Debug Job Outputs (After Step)
-        run: |
-          echo "Checking if the job output variable 'kube_config_b64' is being populated..."
-          echo "Value (truncated for security): ${{ steps.terraform_outputs.outputs.kube_config_b64 }}" | head -c 200
-          if [ -z "${{ steps.terraform_outputs.outputs.kube_config_b64 }}" ]; then
-            echo "::warning::Job output 'kube_config_b64' appears empty or not propagated from step."
-          fi
-
-
+      - name: Upload Terraform Outputs Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs
+          path: terraform/tf_outputs.env
+          retention-days: 1
+          overwrite: true
+      
   deploy_k8s:
     runs-on: ubuntu-latest
     needs: deploy_infra
@@ -103,18 +97,23 @@ jobs:
           name: kubeconfig
           path: ~/.kube
 
+      - name: Download Terraform Outputs Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-outputs
+          path: .
+
       - name: Configure kubectl
         run: |
           echo "Configuring kubectl..."
 
-          KUBECONFIG_FILE="${HOME}/.kube/kube_config.b64" # Path to the downloaded artifact file
+          KUBECONFIG_FILE="${HOME}/.kube/kube_config.b64"
 
           if [ ! -f "$KUBECONFIG_FILE" ]; then
             echo "::error::Kubeconfig artifact file not found at $KUBECONFIG_FILE."
             exit 1
           fi
 
-          # Decode the base64 file directly
           base64 -d "$KUBECONFIG_FILE" > ${HOME}/.kube/config
           if [ $? -ne 0 ]; then
             echo "::error::Failed to base64 decode kubeconfig artifact. Is the file valid base64?"
@@ -136,22 +135,30 @@ jobs:
 
       - name: Substitute Env Variables in K8s Manifests
         env:
-          ACR_LOGIN_SERVER: ${{ needs.deploy_infra.outputs.acr_login_server }}
-          KEY_VAULT_NAME:   ${{ needs.deploy_infra.outputs.key_vault_name }}
           TENANT_ID:        ${{ env.ARM_TENANT_ID }}
         working-directory: k8s/
         run: |
           echo "Substituting variables..."
 
+          if [ -f ../tf_outputs.env ]; then
+            source ../tf_outputs.env
+            echo "Variables loaded from ../tf_outputs.env"
+            echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
+            echo "KEY_VAULT_NAME=$KEY_VAULT_NAME"
+          else
+            echo "::error::tf_outputs.env file not found in the job root directory."
+            exit 1
+          fi
+
           find deployments/ -type f -name '*.yaml' ! -path 'deployments/zipkin-deployment.yaml' -exec sed -i -E "s#image:\s*([a-zA-Z0-9._/-]+):([a-zA-Z0-9._-]+)#image: ${ACR_LOGIN_SERVER}/\1:\2#g" {} +
           echo "Image names prefixed with ${ACR_LOGIN_SERVER}/"
 
           if [ -f csi/keyvault-secrets-provider.yaml ]; then
-             sed -i "s|\${KEY_VAULT_NAME}|${KEY_VAULT_NAME}|g" csi/keyvault-secrets-provider.yaml
-             sed -i "s|\${TENANT_ID}|${TENANT_ID}|g" csi/keyvault-secrets-provider.yaml
-             echo "Variables substituted in SecretProviderClass"
+              sed -i "s|\${KEY_VAULT_NAME}|${KEY_VAULT_NAME}|g" csi/keyvault-secrets-provider.yaml
+              sed -i "s|\${TENANT_ID}|${TENANT_ID}|g" csi/keyvault-secrets-provider.yaml
+              echo "Variables substituted in SecretProviderClass"
           else
-             echo "WARN: SecretProviderClass manifest not found at csi/keyvault-secrets-provider.yaml"
+              echo "WARN: SecretProviderClass manifest not found at csi/keyvault-secrets-provider.yaml"
           fi
 
       - name: Apply Kubernetes Manifests

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: users-api
-          image: users-api:initial
+          image: users-api:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8083
