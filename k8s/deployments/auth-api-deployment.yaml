@@ -15,7 +15,7 @@ spec:
       containers:
         - name: auth-api
           image: auth-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           env:

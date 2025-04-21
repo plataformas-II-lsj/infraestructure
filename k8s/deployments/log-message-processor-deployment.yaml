@@ -17,7 +17,7 @@ spec:
       containers:
         - name: log-message-processor
           image: log-message-processor:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           env:
             - name: REDIS_HOST
               value: redis
