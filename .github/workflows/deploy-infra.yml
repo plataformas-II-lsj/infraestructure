@@ -156,8 +156,16 @@ jobs:
 
       - name: Create Kubernetes Secret from TF Output
         run: |
+          if [ -f tf_outputs.env ]; then
+            source tf_outputs.env
+            echo "Loaded JWT_SECRET_VALUE from tf_outputs.env"
+          else
+            echo "::error::tf_outputs.env file not found. Cannot create secret."
+            exit 1
+          fi
+
           if [ -z "$JWT_SECRET_VALUE" ]; then
-            echo "::error::JWT_SECRET_VALUE is empty. Cannot create secret."
+            echo "::error::JWT_SECRET_VALUE is empty after sourcing. Cannot create secret."
             exit 1
           fi
 
