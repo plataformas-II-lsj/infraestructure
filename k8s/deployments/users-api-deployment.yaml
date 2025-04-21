@@ -35,9 +35,6 @@ spec:
           volumeMounts:
             - name: users-data
               mountPath: /app/data
-            - name: secrets-store-inline
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
           resources:
             requests:
               cpu: "100m"
@@ -48,9 +45,3 @@ spec:
       volumes:
         - name: users-data
           emptyDir: {}
-        - name: secrets-store-inline
-          csi:
-            driver: secrets-store.csi.azure.com
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: azure-kv-secrets
