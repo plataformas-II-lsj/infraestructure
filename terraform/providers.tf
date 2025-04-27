@@ -1,9 +1,9 @@
 terraform {
   backend "azurerm" {
-    resource_group_name  = "rg-terraform-state"
-    storage_account_name = "tfstatelsj"
+    resource_group_name  = "my-tfstate-yus-rg"
+    storage_account_name = "mytfstateaccountyus"
     container_name       = "tfstate"
-    key                  = "infra.terraform.tfstate"
+    key                  = "terraform.tfstate"
   }
 
   required_providers {
